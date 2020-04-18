@@ -2,7 +2,6 @@
 
 #define LED_PIN 6
 #define NUM_LEDS 87
-#define MAX_BRIGHTNESS 64
 
 // signal from op amp
 #define PICKUP_PIN A0
@@ -10,6 +9,9 @@
 #define MODE_ROTARY_PIN A3
 #define ADJ_POT_PIN A4
 #define BRIGHT_POT_PIN A5
+
+#define MAX_BRIGHTNESS 64
+#define BASELINE_BRIGHTNESS 128
 
 #define PATTERN_SOLID_COLOR 0
 #define PATTERN_RAINBOW 1
@@ -19,10 +21,13 @@
 #define PATTERN_COLOR_PULSE 5
 #define PATTERN_SOUND_AMPLITUDE 6
 #define PATTERN_SOUND_PULSE 7
+#define PATTERN_RANDOM_PULSE 8
 
 #define RAINBOW_MIN_SAT 128
 
 #define WAVE_INTERVAL 20
+
+#define NUM_RAND_PULSE_LEDS 8
 
 #define ENERGY_HISTORY_SIZE 10
 #define NUM_SAMPLES 256
@@ -40,6 +45,7 @@ uint16_t totalSteps;
 uint16_t curStep;
 
 CHSV colorHSV1;
+uint8_t randLeds[NUM_RAND_PULSE_LEDS];
 
 uint8_t curMode;
 
@@ -59,11 +65,8 @@ void setup() {
     // this reduces flicker at low brightness levels -- test whether needed on battery power
     FastLED.setDither(0);
 
-    // solidColorInit(0);
-    // rainbowInit();
-    // rainbowCycleInit();
-    // colorWaveInit(255);
-    // colorWaveRainbowInit();
+    // random seed
+    random16_add_entropy(analogRead(A1));
 }
 
 void loop() {
@@ -134,6 +137,7 @@ void updateMode() {
     uint8_t mode = readMode();
     if (mode != curMode) {
         curMode = mode;
+        fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
         switch (curMode) {
             case 0:
                 solidColorInit(255);
@@ -166,6 +170,7 @@ void updateMode() {
                 soundPulseInit();
                 break;
             case 10:
+                randomPulseInit();
                 break;
             case 11:
                 break;
@@ -207,6 +212,9 @@ void updatePattern() {
                 break;
             case PATTERN_SOUND_PULSE:
                 soundPulseUpdate();
+                break;
+            case PATTERN_RANDOM_PULSE:
+                randomPulseUpdate();
                 break;
             default:
                 break;
@@ -273,7 +281,9 @@ void colorWaveUpdate() {
     colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
     for (uint8_t led = 0; led < NUM_LEDS; led++) {
         uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
-        colorHSV1.val = cubicwave8(curStep + offset);
+        // colorHSV1.val = cubicwave8(curStep + offset);
+        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, BASELINE_BRIGHTNESS, 255);
+        colorHSV1.val = pgm_read_byte(&gamma[val]);
         leds[led] = colorHSV1;
     }
 
@@ -292,7 +302,10 @@ void colorWaveRainbowUpdate() {
     colorHSV1.sat = readPotScaled(ADJ_POT_PIN, RAINBOW_MIN_SAT, 255);
     for (uint8_t led = 0; led < NUM_LEDS; led++) {
         uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
-        colorHSV1.val = cubicwave8(curStep + offset);
+        // colorHSV1.val = cubicwave8(curStep + offset);
+        // uint8_t val = cubicwave8(curStep + offset);
+        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, BASELINE_BRIGHTNESS, 255);
+        colorHSV1.val = pgm_read_byte(&gamma[val]);
 
         colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255) + curStep;
         leds[led] = colorHSV1;
@@ -321,11 +334,70 @@ void colorPulseUpdate() {
     incrementStep();
 }
 
+void randomPulseInit() {
+    activePattern = PATTERN_RANDOM_PULSE;
+    colorHSV1 = CHSV(0, 0, 255);
+    totalSteps = 256;
+    curStep = 0;
+    interval = 20;
+    for (uint8_t i = 0; i < NUM_RAND_PULSE_LEDS; i++) {
+        randLeds[i] = random8(NUM_LEDS);
+    }
+}
+
+void randomPulseUpdate() {
+    for (uint8_t led = 0; led < NUM_RAND_PULSE_LEDS; led++) {
+        uint8_t waveOffset = map(led, 0, NUM_RAND_PULSE_LEDS, 0, 255);
+
+        uint8_t wave = quadwave8(curStep + waveOffset);
+        
+        if ((curStep + waveOffset) == 256) {
+            uint8_t newRandLed = random8(NUM_LEDS);
+            bool validLedPos = false;
+            while (!validLedPos) {
+                validLedPos = true;
+                for (uint8_t i = 0; i < NUM_RAND_PULSE_LEDS; i++) {
+                    if (i == led) continue;
+                    uint8_t ledGap = randLeds[i] > newRandLed ? randLeds[i] - newRandLed : newRandLed - randLeds[i];
+                    if (ledGap < 5) {
+                        newRandLed = random8(NUM_LEDS);
+                        validLedPos = false;
+                        break;
+                    }
+                }
+            }
+            randLeds[led] = newRandLed;
+        }
+
+        colorHSV1.val = pgm_read_byte(&gamma[wave]);
+        leds[randLeds[led]] = colorHSV1;
+
+        if (randLeds[led] > 0) {
+            leds[randLeds[led] - 1] = colorHSV1;
+            leds[randLeds[led] - 1] %= pgm_read_byte(&gamma[128]);
+        }
+        if (randLeds[led] < NUM_LEDS - 1) {
+            leds[randLeds[led] + 1] = colorHSV1;
+            leds[randLeds[led] + 1] %= pgm_read_byte(&gamma[128]);
+        }
+        if (randLeds[led] > 1) {
+            leds[randLeds[led] - 2] = colorHSV1;
+            leds[randLeds[led] - 2] %= pgm_read_byte(&gamma[64]);
+        }
+        if (randLeds[led] < NUM_LEDS - 2) {
+            leds[randLeds[led] + 2] = colorHSV1;
+            leds[randLeds[led] + 2] %= pgm_read_byte(&gamma[64]);
+        }
+    }
+
+    incrementStep();
+}
+
+// sound reactive modes
 uint8_t readPickup() {
     return map(analogRead(PICKUP_PIN), 0, 1023, 0, 255);
 }
 
-// sound reactive modes
 void updatePickupReading() {
     uint8_t reading = readPickup();
     if (reading < pickupBaseline) {
@@ -432,7 +504,7 @@ void soundPulseUpdate() {
     // only want first half of wave (up to top)
     uint8_t reading = readPotScaled(ADJ_POT_PIN, 128);
     // map wave fn upwards so theres always a min brightness
-    uint8_t val = map(quadwave8(reading), 0, 255, 128, 255);
+    uint8_t val = map(quadwave8(reading), 0, 255, BASELINE_BRIGHTNESS, 255);
     uint8_t gammaVal = pgm_read_byte(&gamma[val]);
     colorHSV1.val = gammaVal;
     fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
