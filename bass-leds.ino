@@ -18,6 +18,7 @@
 #define PATTERN_COLOR_WAVE_RAINBOW 4
 #define PATTERN_COLOR_PULSE 5
 #define PATTERN_SOUND_AMPLITUDE 6
+#define PATTERN_SOUND_PULSE 7
 
 #define RAINBOW_MIN_SAT 128
 
@@ -38,7 +39,6 @@ uint32_t lastUpdate;
 uint16_t totalSteps;
 uint16_t curStep;
 
-CRGB colorRGB1;
 CHSV colorHSV1;
 
 uint8_t curMode;
@@ -139,28 +139,31 @@ void updateMode() {
                 solidColorInit(255);
                 break;
             case 1:
-                rainbowInit();
+                solidColorInit(192);
                 break;
             case 2:
-                rainbowCycleInit();
+                solidColorInit(128);
                 break;
             case 3:
-                colorWaveInit(255);
+                rainbowInit();
                 break;
             case 4:
-                colorWaveRainbowInit();
+                rainbowCycleInit();
                 break;
             case 5:
-                colorPulseInit();
+                colorWaveInit(255);
                 break;
             case 6:
-                soundAmplitudeInit();
+                colorWaveRainbowInit();
                 break;
             case 7:
+                colorPulseInit();
                 break;
             case 8:
+                soundAmplitudeInit();
                 break;
             case 9:
+                soundPulseInit();
                 break;
             case 10:
                 break;
@@ -201,6 +204,9 @@ void updatePattern() {
                 break;
             case PATTERN_SOUND_AMPLITUDE:
                 soundAmplitudeUpdate();
+                break;
+            case PATTERN_SOUND_PULSE:
+                soundPulseUpdate();
                 break;
             default:
                 break;
@@ -390,12 +396,14 @@ void soundAmplitudeInit() {
 }
 
 void soundAmplitudeUpdate() {
+    // replace this with pickup reading
     uint8_t numLeds = readPotScaled(ADJ_POT_PIN, 45);
     fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
     for (uint8_t i = 0; i < numLeds; i++) {
         if (i >= 45) break;
         leds[43 + i] = colorHSV1;
         leds[43 - i] = colorHSV1;
+        // fading edges
         if (i == numLeds - 3) {
             leds[43 + i] %= pgm_read_byte(&gamma[192]);
             leds[43 - i] %= pgm_read_byte(&gamma[192]);
@@ -410,6 +418,24 @@ void soundAmplitudeUpdate() {
             leds[43 - i] %= pgm_read_byte(&gamma[32]);
         }
     }
+}
+
+void soundPulseInit() {
+    activePattern = PATTERN_SOUND_PULSE;
+    interval = 20;
+    // use adj pot to change color instead
+    colorHSV1 = CHSV(0, 0, 255);
+}
+
+void soundPulseUpdate() {
+    // replace with pickup reading
+    // only want first half of wave (up to top)
+    uint8_t reading = readPotScaled(ADJ_POT_PIN, 128);
+    // map wave fn upwards so theres always a min brightness
+    uint8_t val = map(quadwave8(reading), 0, 255, 128, 255);
+    uint8_t gammaVal = pgm_read_byte(&gamma[val]);
+    colorHSV1.val = gammaVal;
+    fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
 }
 
 const PROGMEM uint8_t gamma[] = {
