@@ -1,33 +1,361 @@
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
 #define LED_PIN 6
-#define LED_COUNT 60
+#define NUM_LEDS 87
+#define MAX_BRIGHTNESS 64
+
+// signal from op amp
+#define PICKUP_PIN A0
+// control knobs
+#define MODE_ROTARY_PIN A3
+#define ADJ_POT_PIN A4
+#define BRIGHT_POT_PIN A5
+
+#define PATTERN_SOLID_COLOR 0
+#define PATTERN_RAINBOW 1
+#define PATTERN_RAINBOW_CYCLE 2
+#define PATTERN_COLOR_WAVE 3
+#define PATTERN_COLOR_WAVE_RAINBOW 4
+#define PATTERN_COLOR_PULSE 5
+
+#define RAINBOW_MIN_SAT 128
+
+#define WAVE_INTERVAL 20
+
+#define ENERGY_HISTORY_SIZE 10
+#define NUM_SAMPLES 256
+#define BEAT_DETECTION_CONSTANT 13
 
 extern const uint8_t gamma[];
 
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUM_LEDS];
+
+uint8_t activePattern;
+uint32_t interval;
+uint32_t lastUpdate;
+
+uint16_t totalSteps;
+uint16_t curStep;
+
+CRGB colorRGB1;
+CHSV colorHSV1;
+
+uint8_t curMode;
+
+
+uint16_t pickupBaseline;
+uint16_t pickupLocalMax;
+
+uint16_t energyHistory[ENERGY_HISTORY_SIZE];
+// uint16_t sampleHistoryHead = 0;
+uint16_t newSamples[NUM_SAMPLES];
+uint16_t sampleIndex = 0;
 
 void setup() {
+    FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
 
-    strip.begin();
-    // make sure all leds are off at start
-    strip.show();
+    // this reduces flicker at low brightness levels -- test whether needed on battery power
+    FastLED.setDither(0);
 
-    // limit overall brightness of LEDs
-    strip.setBrightness(64);
+    // solidColorInit(0);
+    // rainbowInit();
+    // rainbowCycleInit();
+    // colorWaveInit(255);
+    // colorWaveRainbowInit();
 }
 
 void loop() {
-    for (uint8_t i = 0; i < strip.numPixels(); i++) {
-        setPixelColor(i, 127, 127, 127);
-    }
-    strip.show();
-    
-    while (true) {}
+    updateLedBrightness();
+
+    updateMode();
+
+    updatePattern();
+
+    // readPickup();
+    // if (sampleIndex == 0) {
+    //     if (detectBeat()) {
+    //         fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
+    //     } else {
+    //         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
+    //     }
+    // }
+
+    // uint16_t reading = analogRead(PICKUP_PIN);
+    // uint8_t val = map(reading, 0, 1023, 0, 255);
+    // uint8_t gammaCorrected = pgm_read_byte(&gamma[val]);
+    // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
+    // FastLED.setBrightness(scaledBrightness);
+
+
+    FastLED.show();
 }
 
-void setPixelColor(uint8_t pixel, uint8_t r, uint8_t g, uint8_t b) {
-    strip.setPixelColor(pixel, pgm_read_byte(&gamma[r]), pgm_read_byte(&gamma[g]), pgm_read_byte(&gamma[b]));
+// reverses direction of pots
+// use this instead of analogRead() for control knobs
+uint16_t readPot(uint8_t pin) {
+    return 1023 - analogRead(pin);
+}
+
+uint16_t readPotScaled(uint8_t pin, uint16_t max) {
+    return map(readPot(pin), 0, 1023, 0, max);
+}
+
+uint16_t readPotScaled(uint8_t pin, uint16_t min, uint16_t max) {
+    return map(readPot(pin), 0, 1023, min, max);
+}
+
+// returns mode from 0-11
+uint8_t readMode() {
+    uint16_t reading = readPot(MODE_ROTARY_PIN);
+    return getModeFromReading(reading);
+}
+
+// get pos of rotary switch for mode
+uint8_t getModeFromReading(uint16_t reading) {
+    if (reading < 47) return 0;
+    else if (reading < 140) return 1;
+    else if (reading < 233) return 2;
+    else if (reading < 326) return 3;
+    else if (reading < 419) return 4;
+    else if (reading < 512) return 5;
+    else if (reading < 605) return 6;
+    else if (reading < 698) return 7;
+    else if (reading < 791) return 8;
+    else if (reading < 884) return 9;
+    else if (reading < 977) return 10;
+    else return 11;
+}
+
+void updateMode() {
+    uint8_t mode = readMode();
+    if (mode != curMode) {
+        curMode = mode;
+        switch (curMode) {
+            case 0:
+                solidColorInit(255);
+                break;
+            case 1:
+                rainbowInit();
+                break;
+            case 2:
+                rainbowCycleInit();
+                break;
+            case 3:
+                colorWaveInit(255);
+                break;
+            case 4:
+                colorWaveRainbowInit();
+                break;
+            case 5:
+                colorPulseInit();
+                break;
+            case 6:
+                break;
+            case 7:
+                break;
+            case 8:
+                break;
+            case 9:
+                break;
+            case 10:
+                break;
+            case 11:
+                break;
+        }
+    }
+}
+
+void updateLedBrightness() {
+    uint8_t reading = readPotScaled(BRIGHT_POT_PIN, 255);
+    uint8_t gammaCorrected = pgm_read_byte(&gamma[reading]);
+    uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
+    FastLED.setBrightness(scaledBrightness);
+}
+
+void updatePattern() {
+    if ((millis() - lastUpdate) > interval) {
+        lastUpdate = millis();
+        switch (activePattern) {
+            case PATTERN_SOLID_COLOR:
+                solidColorUpdate();
+                break;
+            case PATTERN_RAINBOW:
+                rainbowUpdate();
+                break;
+            case PATTERN_RAINBOW_CYCLE:
+                rainbowCycleUpdate();
+                break;
+            case PATTERN_COLOR_WAVE:
+                colorWaveUpdate();
+                break;
+            case PATTERN_COLOR_WAVE_RAINBOW:
+                colorWaveRainbowUpdate();
+                break;
+            case PATTERN_COLOR_PULSE:
+                colorPulseUpdate();
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void incrementStep() {
+    curStep++;
+    if (curStep >= totalSteps) {
+        curStep = 0;
+    }
+}
+
+void solidColorInit(uint8_t sat) {
+    activePattern = PATTERN_SOLID_COLOR;
+    colorHSV1 = CHSV(0, sat, 255);
+}
+
+void solidColorUpdate() {
+    colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
+    fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
+}
+
+void rainbowInit() {
+    activePattern = PATTERN_RAINBOW;
+    colorHSV1 = CHSV(0, 255, 255);
+}
+
+void rainbowUpdate() {
+    colorHSV1.sat = readPotScaled(ADJ_POT_PIN, RAINBOW_MIN_SAT, 255);
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255);
+        leds[led] = colorHSV1;
+    }
+}
+
+void rainbowCycleInit() {
+    activePattern = PATTERN_RAINBOW_CYCLE;
+    colorHSV1 = CHSV(0, 255, 255);
+    totalSteps = 256;
+    curStep = 0;
+    interval = 20;
+}
+
+void rainbowCycleUpdate() {
+    colorHSV1.sat = readPotScaled(ADJ_POT_PIN, RAINBOW_MIN_SAT, 255);
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255) + curStep;
+        leds[led] = colorHSV1;
+    }
+    incrementStep();
+}
+
+void colorWaveInit(uint8_t sat) {
+    activePattern = PATTERN_COLOR_WAVE;
+    colorHSV1 = CHSV(0, sat, 255);
+    totalSteps = 256;
+    curStep = 0;
+    interval = WAVE_INTERVAL;
+}
+
+void colorWaveUpdate() {
+    colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
+        colorHSV1.val = cubicwave8(curStep + offset);
+        leds[led] = colorHSV1;
+    }
+
+    incrementStep();
+}
+
+void colorWaveRainbowInit() {
+    activePattern = PATTERN_COLOR_WAVE_RAINBOW;
+    colorHSV1 = CHSV(0, 255, 255);
+    totalSteps = 256;
+    curStep = 0;
+    interval = WAVE_INTERVAL;
+}
+
+void colorWaveRainbowUpdate() {
+    colorHSV1.sat = readPotScaled(ADJ_POT_PIN, RAINBOW_MIN_SAT, 255);
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
+        colorHSV1.val = cubicwave8(curStep + offset);
+
+        colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255) + curStep;
+        leds[led] = colorHSV1;
+    }
+
+    incrementStep();
+}
+
+void colorPulseInit() {
+    activePattern = PATTERN_COLOR_PULSE;
+    colorHSV1 = CHSV(0, 255, 255);
+    totalSteps = 256;
+    curStep = 0;
+    interval = 20;
+}
+
+void colorPulseUpdate() {
+    uint8_t hue = readPotScaled(ADJ_POT_PIN, 255);
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        uint16_t waveOffset = map(led, 0, NUM_LEDS, 0, 511);
+        uint8_t wave = quadwave8(curStep + waveOffset);
+
+        colorHSV1.hue = hue + map(wave, 0, 255, 0, 50);
+        leds[led] = colorHSV1;
+    }
+    incrementStep();
+}
+
+// sound reactive modes
+void readPickup() {
+    uint16_t reading = analogRead(PICKUP_PIN);
+    if (reading < pickupBaseline) {
+        pickupBaseline = reading;
+    } else if (reading > pickupLocalMax) {
+        pickupLocalMax = reading;
+    }
+
+    newSamples[sampleIndex] = reading;
+    sampleIndex++;
+    if (sampleIndex >= NUM_SAMPLES) sampleIndex = 0;
+}
+
+bool detectBeat() {
+    uint32_t instantEnergy = 0;
+    for (uint16_t i = 0; i < NUM_SAMPLES; i++) {
+        instantEnergy += newSamples[i] * newSamples[i];
+    }
+
+    uint32_t localAverageEnergy = 0;
+    for (uint8_t i = 0; i < ENERGY_HISTORY_SIZE; i++) {
+        localAverageEnergy += (energyHistory[i] * energyHistory[i]) / ENERGY_HISTORY_SIZE;
+    }
+
+    // uint32_t energyVariance = 0;
+    // for (uint8_t i = 0; i < ENERGY_HISTORY_SIZE; i++) {
+    //     energyVariance += (energyHistory[i] - localAverageEnergy) * (energyHistory[i] - localAverageEnergy) / 10;
+    // }
+
+    for (uint8_t i = 1; i < ENERGY_HISTORY_SIZE; i++) {
+        energyHistory[ENERGY_HISTORY_SIZE - i] = energyHistory[ENERGY_HISTORY_SIZE - i - 1];
+    }
+
+    energyHistory[0] = instantEnergy;
+
+    // sampleHistoryHead += 1024;
+    // if (sampleHistoryHead >= SAMPLE_HISTORY_SIZE) {
+    //     sampleHistoryHead -= SAMPLE_HISTORY_SIZE;
+    // }
+
+    // if (sampleHistoryHead >= 1024) {
+    //     memcpy(&(sampleHistory[sampleHistoryHead - 1024]), &(newSamples[0]), sizeof(newSamples));
+    // } else {
+    //     memcpy(&(sampleHistory[sampleHistoryHead + SAMPLE_HISTORY_SIZE - 1024]), &(newSamples[0]), 2 * (1024 - sampleHistoryHead));
+    //     memcpy(&(sampleHistory[0]), &(newSamples[sampleHistoryHead]), 2 * sampleHistoryHead);
+    // }
+
+    return instantEnergy * 10 > localAverageEnergy * BEAT_DETECTION_CONSTANT;
 }
 
 const PROGMEM uint8_t gamma[] = {
