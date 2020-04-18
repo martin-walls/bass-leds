@@ -17,6 +17,7 @@
 #define PATTERN_COLOR_WAVE 3
 #define PATTERN_COLOR_WAVE_RAINBOW 4
 #define PATTERN_COLOR_PULSE 5
+#define PATTERN_SOUND_AMPLITUDE 6
 
 #define RAINBOW_MIN_SAT 128
 
@@ -43,8 +44,9 @@ CHSV colorHSV1;
 uint8_t curMode;
 
 
-uint16_t pickupBaseline;
-uint16_t pickupLocalMax;
+uint8_t pickupBaseline;
+uint8_t pickupLocalMax;
+uint8_t pickupValue;
 
 uint16_t energyHistory[ENERGY_HISTORY_SIZE];
 // uint16_t sampleHistoryHead = 0;
@@ -71,10 +73,12 @@ void loop() {
 
     updatePattern();
 
+    updatePickupReading();
+
     // readPickup();
     // if (sampleIndex == 0) {
     //     if (detectBeat()) {
-    //         fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
+            // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
     //     } else {
     //         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
     //     }
@@ -82,7 +86,7 @@ void loop() {
 
     // uint16_t reading = analogRead(PICKUP_PIN);
     // uint8_t val = map(reading, 0, 1023, 0, 255);
-    // uint8_t gammaCorrected = pgm_read_byte(&gamma[val]);
+    // uint8_t gammaCorrected = pgm_read_byte(&gamma[pickupValue]);
     // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
     // FastLED.setBrightness(scaledBrightness);
 
@@ -150,6 +154,7 @@ void updateMode() {
                 colorPulseInit();
                 break;
             case 6:
+                soundAmplitudeInit();
                 break;
             case 7:
                 break;
@@ -193,6 +198,9 @@ void updatePattern() {
                 break;
             case PATTERN_COLOR_PULSE:
                 colorPulseUpdate();
+                break;
+            case PATTERN_SOUND_AMPLITUDE:
+                soundAmplitudeUpdate();
                 break;
             default:
                 break;
@@ -307,18 +315,35 @@ void colorPulseUpdate() {
     incrementStep();
 }
 
+uint8_t readPickup() {
+    return map(analogRead(PICKUP_PIN), 0, 1023, 0, 255);
+}
+
 // sound reactive modes
-void readPickup() {
-    uint16_t reading = analogRead(PICKUP_PIN);
+void updatePickupReading() {
+    uint8_t reading = readPickup();
     if (reading < pickupBaseline) {
         pickupBaseline = reading;
+        pickupValue = 0;
     } else if (reading > pickupLocalMax) {
         pickupLocalMax = reading;
+        pickupValue = 255;
+    } else {
+        scale8(pickupLocalMax, 250);
+        if (pickupLocalMax <= pickupBaseline) {
+            pickupLocalMax = pickupBaseline + 1;
+        }
+        reading -= pickupBaseline;
+        pickupValue = map(reading, 0, pickupLocalMax - pickupBaseline, 0, 255);
     }
 
-    newSamples[sampleIndex] = reading;
-    sampleIndex++;
-    if (sampleIndex >= NUM_SAMPLES) sampleIndex = 0;
+    // pickupValue = readPickup();
+
+
+
+    // newSamples[sampleIndex] = reading;
+    // sampleIndex++;
+    // if (sampleIndex >= NUM_SAMPLES) sampleIndex = 0;
 }
 
 bool detectBeat() {
@@ -356,6 +381,35 @@ bool detectBeat() {
     // }
 
     return instantEnergy * 10 > localAverageEnergy * BEAT_DETECTION_CONSTANT;
+}
+
+void soundAmplitudeInit() {
+    activePattern = PATTERN_SOUND_AMPLITUDE;
+    interval = 20;
+    colorHSV1 = CHSV(0, 0, 255);
+}
+
+void soundAmplitudeUpdate() {
+    uint8_t numLeds = readPotScaled(ADJ_POT_PIN, 45);
+    fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
+    for (uint8_t i = 0; i < numLeds; i++) {
+        if (i >= 45) break;
+        leds[43 + i] = colorHSV1;
+        leds[43 - i] = colorHSV1;
+        if (i == numLeds - 3) {
+            leds[43 + i] %= pgm_read_byte(&gamma[192]);
+            leds[43 - i] %= pgm_read_byte(&gamma[192]);
+        } else if (i == numLeds - 2) {
+            leds[43 + i] %= pgm_read_byte(&gamma[128]);
+            leds[43 - i] %= pgm_read_byte(&gamma[128]);
+        } else if (i == numLeds - 1) {
+            leds[43 + i] %= pgm_read_byte(&gamma[64]);
+            leds[43 - i] %= pgm_read_byte(&gamma[64]);
+        } else if (i == numLeds) {
+            leds[43 + i] %= pgm_read_byte(&gamma[32]);
+            leds[43 - i] %= pgm_read_byte(&gamma[32]);
+        }
+    }
 }
 
 const PROGMEM uint8_t gamma[] = {
