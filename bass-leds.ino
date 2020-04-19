@@ -22,12 +22,23 @@
 #define PATTERN_SOUND_AMPLITUDE 6
 #define PATTERN_SOUND_PULSE 7
 #define PATTERN_RANDOM_PULSE 8
+#define PATTERN_GRADIENT_1 9
+#define PATTERN_GRADIENT_2 10
 
 #define RAINBOW_MIN_SAT 128
 
 #define WAVE_INTERVAL 20
 
 #define NUM_RAND_PULSE_LEDS 8
+
+#define NUM_GRADIENT_COLORS 4
+#define GRADIENT_GREEN_PURPLE 0
+#define GRADIENT_AQUA_PURPLE 1
+#define GRADIENT_PURPLE_PINK 2
+#define GRADIENT_BLUE_AQUA 3
+
+#define CLOCKWISE 0
+#define ANTICLOCKWISE 1
 
 #define ENERGY_HISTORY_SIZE 10
 #define NUM_SAMPLES 256
@@ -46,6 +57,8 @@ uint16_t curStep;
 
 CHSV colorHSV1;
 uint8_t randLeds[NUM_RAND_PULSE_LEDS];
+uint8_t gradHue1;
+uint8_t gradHue2;
 
 uint8_t curMode;
 
@@ -92,7 +105,6 @@ void loop() {
     // uint8_t gammaCorrected = pgm_read_byte(&gamma[pickupValue]);
     // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
     // FastLED.setBrightness(scaledBrightness);
-
 
     FastLED.show();
 }
@@ -173,6 +185,7 @@ void updateMode() {
                 randomPulseInit();
                 break;
             case 11:
+                gradient2Init();
                 break;
         }
     }
@@ -215,6 +228,12 @@ void updatePattern() {
                 break;
             case PATTERN_RANDOM_PULSE:
                 randomPulseUpdate();
+                break;
+            case PATTERN_GRADIENT_1:
+                gradient1Update();
+                break;
+            case PATTERN_GRADIENT_2:
+                gradient2Update();
                 break;
             default:
                 break;
@@ -391,6 +410,72 @@ void randomPulseUpdate() {
     }
 
     incrementStep();
+}
+
+void gradient1Init() {
+    activePattern = PATTERN_GRADIENT_1;
+}
+
+void gradient1Update() {
+    setGradientColors();
+
+    fill_gradient(&(leds[0]), 0, CHSV(gradHue1, 255, 255), NUM_LEDS / 2, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), NUM_LEDS / 2, CHSV(gradHue2, 255, 255), NUM_LEDS - 1, CHSV(gradHue1, 255, 255));
+
+}
+
+void gradient2Init() {
+    activePattern = PATTERN_GRADIENT_2;
+}
+
+void gradient2Update() {
+    setGradientColors();
+
+    fill_gradient(&(leds[0]), 0, CHSV(gradHue1, 255, 255), NUM_LEDS / 4, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), NUM_LEDS / 4, CHSV(gradHue2, 255, 255), NUM_LEDS / 2, CHSV(gradHue1, 255, 255));
+    fill_gradient(&(leds[0]), NUM_LEDS / 2, CHSV(gradHue1, 255, 255), NUM_LEDS * 3 / 4, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), NUM_LEDS * 3 / 4, CHSV(gradHue2, 255, 255), NUM_LEDS - 1, CHSV(gradHue1, 255, 255));
+}
+
+void setGradientColors() {
+    uint8_t colors = readPotScaled(ADJ_POT_PIN, NUM_GRADIENT_COLORS);
+
+    switch (colors) {
+        case GRADIENT_GREEN_PURPLE:
+            gradHue1 = 96;
+            gradHue2 = 192;
+            break;
+        case GRADIENT_AQUA_PURPLE:
+            gradHue1 = 116;
+            gradHue2 = 192;
+            break;
+        case GRADIENT_PURPLE_PINK:
+            gradHue1 = 208;
+            gradHue2 = 250;
+            break;
+        case GRADIENT_BLUE_AQUA:
+            gradHue1 = 160;
+            gradHue2 = 128;
+            break;
+        default:
+            break;
+    }
+}
+
+void rotateLeds(uint8_t direction) {
+    if (direction == CLOCKWISE) {
+        CRGB overflowColor = leds[NUM_LEDS - 1];
+        for (uint8_t i = 1; i < NUM_LEDS; i++) {
+            leds[NUM_LEDS - i] = leds[NUM_LEDS - i - 1];
+        }
+        leds[0] = overflowColor;
+    } else {
+        CRGB underflowColor = leds[0];
+        for (uint8_t i = 0; i < NUM_LEDS - 1; i++) {
+            leds[i] = leds[i + 1];
+        }
+        leds[NUM_LEDS - 1] = underflowColor;
+    }
 }
 
 // sound reactive modes
