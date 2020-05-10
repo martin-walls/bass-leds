@@ -44,6 +44,13 @@
 #define NUM_SAMPLES 256
 #define BEAT_DETECTION_CONSTANT 13
 
+#define PICKUP_NOISE_THRESHOLD 12
+#define PICKUP_BASELINE_RESET_MILLIS 300000
+#define PICKUP_LOCAL_MAX_MILLIS 10
+
+#define PICKUP_NUM_SAMPLES 20
+
+
 extern const uint8_t gamma[];
 
 CRGB leds[NUM_LEDS];
@@ -63,16 +70,37 @@ uint8_t gradHue2;
 uint8_t curMode;
 
 
-uint8_t pickupBaseline;
+uint16_t pickupBaseline = 1023;
+uint32_t lastPickupBaselineReset;
+// uint16_t pickupLocalMax;
+uint16_t pickupValue;
+
+uint32_t lastPickupLocalMax;
+
+
+uint16_t samples[PICKUP_NUM_SAMPLES];
+uint8_t sampleIndex = 0;
+
+uint16_t lastReading;
+
+
+uint8_t pickupUpdateValue;
+uint32_t pickupUpdateValueLastUpdate;
+
 uint8_t pickupLocalMax;
-uint8_t pickupValue;
+
+uint8_t pickupFadeValue;
+uint8_t pickupFadeValueLastUpdate;
+
+
 
 uint16_t energyHistory[ENERGY_HISTORY_SIZE];
 // uint16_t sampleHistoryHead = 0;
 uint16_t newSamples[NUM_SAMPLES];
-uint16_t sampleIndex = 0;
+// uint16_t sampleIndex = 0;
 
 void setup() {
+    /*
     FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
 
     // this reduces flicker at low brightness levels -- test whether needed on battery power
@@ -80,18 +108,123 @@ void setup() {
 
     // random seed
     random16_add_entropy(analogRead(A1));
+
+    // white for testing
+    // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
+
+    soundAmplitudeInit();*/
+
+    Serial.begin(115200);
 }
 
 void loop() {
-    updateLedBrightness();
+    
+    // updateLedBrightness();
 
-    updateMode();
+    // updateMode();
 
-    updatePattern();
+    // updatePattern();
 
-    updatePickupReading();
+    // updatePickupReading();
+    
 
-    // readPickup();
+    
+
+    uint16_t reading = readPickup();
+
+    Serial.println(reading);
+
+    if ((millis() - lastPickupBaselineReset) > PICKUP_BASELINE_RESET_MILLIS) {
+        lastPickupBaselineReset = millis();
+        pickupBaseline = reading;
+    }
+    if (reading < pickupBaseline) {
+        lastPickupBaselineReset = millis();
+        pickupBaseline = reading;
+    }
+
+    // move down to 0
+    reading -= pickupBaseline;
+
+    // remove noise
+    if (reading > PICKUP_NOISE_THRESHOLD) {
+        reading -= PICKUP_NOISE_THRESHOLD;
+    } else {
+        reading = 0;
+    }
+
+    // now from 0 - ~60
+
+    // samples[sampleIndex] = reading;
+    // sampleIndex++;
+    // if (sampleIndex >= PICKUP_NUM_SAMPLES) sampleIndex = 0;
+
+    // pickupValue = ((pickupValue * 7) + reading) >> 3;
+
+    // if (pickupValue > pickupLocalMax || millis() - lastPickupLocalMax > 5) {
+    //     pickupLocalMax = ((pickupLocalMax * 3) + pickupValue) >> 2;
+    //     lastPickupLocalMax = millis();
+    // }
+
+    // if (reading - pickupBaseline > PICKUP_NOISE_THRESHOLD) {
+    //     uint16_t correctedReading = map(reading - pickupBaseline - PICKUP_NOISE_THRESHOLD, 0, 60, 0, 255);
+    //     if (correctedReading > pickupValue) {
+    //         pickupValue = correctedReading;
+    //     } else {
+    //         if ((millis() - lastPickupLocalMax) > PICKUP_LOCAL_MAX_MILLIS) {
+    //             lastPickupLocalMax = millis();
+    //             pickupValue = scale8(pickupValue, 240);
+    //         }
+    //     }
+    // } else {
+    //     if ((millis() - lastPickupLocalMax) > PICKUP_LOCAL_MAX_MILLIS) {
+    //         lastPickupLocalMax = millis();
+    //         pickupValue = scale8(pickupValue, 254);
+    //     }
+    // }
+
+    // corReading = map(corReading, 0, 60, 0, 255);
+
+    // uint16_t maxSample = 0;
+    // uint16_t sum;
+    // for (uint8_t i = 0; i < PICKUP_NUM_SAMPLES; i++) {
+    //     // if (samples[i] > maxSample) {
+    //     //     maxSample = samples[i];
+    //     // }
+    //     sum += samples[i];
+    // } 
+
+    // uint16_t avg = sum / PICKUP_NUM_SAMPLES;
+
+    uint16_t outVal = ((lastReading * 15) + reading) >> 4;
+    lastReading = reading;
+
+    // uint8_t gammaCorrect = pgm_read_byte(&gamma[map(outVal, 0, 60, 0, 255)]);
+    // uint8_t scaledBright = map(gammaCorrect, 0, 255, 0, MAX_BRIGHTNESS);
+    // FastLED.setBrightness(scaledBright);
+    
+    uint8_t scaledOutVal = map(reading, 0, 60, 0, 255);
+
+
+
+    if (millis() - pickupFadeValueLastUpdate > 10) {
+        pickupFadeValue -= 10;
+    }
+
+    if (scaledOutVal > pickupFadeValue) {
+        pickupFadeValue = scaledOutVal;
+    }
+
+    // if (scaledOutVal > pickupLocalMax) {
+    //     pickupLocalMax = scaledOutVal;
+    // }
+    // if (millis() - pickupUpdateValueLastUpdate > 50) {
+    //     pickupUpdateValueLastUpdate = millis();
+    //     pickupUpdateValue = pickupLocalMax;
+    //     pickupFadeValue = pickupUpdateValue;
+    //     pickupLocalMax = 0;
+    // }
+
     // if (sampleIndex == 0) {
     //     if (detectBeat()) {
             // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
@@ -106,7 +239,7 @@ void loop() {
     // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
     // FastLED.setBrightness(scaledBrightness);
 
-    FastLED.show();
+    // FastLED.show();
 }
 
 // reverses direction of pots
@@ -479,8 +612,8 @@ void rotateLeds(uint8_t direction) {
 }
 
 // sound reactive modes
-uint8_t readPickup() {
-    return map(analogRead(PICKUP_PIN), 0, 1023, 0, 255);
+uint16_t readPickup() {
+    return analogRead(PICKUP_PIN);
 }
 
 void updatePickupReading() {
@@ -554,25 +687,26 @@ void soundAmplitudeInit() {
 
 void soundAmplitudeUpdate() {
     // replace this with pickup reading
-    uint8_t numLeds = readPotScaled(ADJ_POT_PIN, 45);
+    // uint8_t numLeds = readPotScaled(ADJ_POT_PIN, 45);
+    uint8_t numLeds = map(pickupFadeValue, 0, 255, 0, 39);
     fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
     for (uint8_t i = 0; i < numLeds; i++) {
-        if (i >= 45) break;
-        leds[43 + i] = colorHSV1;
-        leds[43 - i] = colorHSV1;
+        if (i >= 40) break;
+        leds[39 + i] = colorHSV1;
+        leds[39 - i] = colorHSV1;
         // fading edges
         if (i == numLeds - 3) {
-            leds[43 + i] %= pgm_read_byte(&gamma[192]);
-            leds[43 - i] %= pgm_read_byte(&gamma[192]);
+            leds[39 + i] %= pgm_read_byte(&gamma[192]);
+            leds[39 - i] %= pgm_read_byte(&gamma[192]);
         } else if (i == numLeds - 2) {
-            leds[43 + i] %= pgm_read_byte(&gamma[128]);
-            leds[43 - i] %= pgm_read_byte(&gamma[128]);
+            leds[39 + i] %= pgm_read_byte(&gamma[128]);
+            leds[39 - i] %= pgm_read_byte(&gamma[128]);
         } else if (i == numLeds - 1) {
-            leds[43 + i] %= pgm_read_byte(&gamma[64]);
-            leds[43 - i] %= pgm_read_byte(&gamma[64]);
+            leds[39 + i] %= pgm_read_byte(&gamma[64]);
+            leds[39 - i] %= pgm_read_byte(&gamma[64]);
         } else if (i == numLeds) {
-            leds[43 + i] %= pgm_read_byte(&gamma[32]);
-            leds[43 - i] %= pgm_read_byte(&gamma[32]);
+            leds[39 + i] %= pgm_read_byte(&gamma[32]);
+            leds[39 - i] %= pgm_read_byte(&gamma[32]);
         }
     }
 }
