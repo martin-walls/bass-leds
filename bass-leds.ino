@@ -467,6 +467,7 @@ void soundPulseUpdate() {
 
 void soundAmplitudeInit() {
     activePattern = PATTERN_SOUND_AMPLITUDE;
+    patternAudioMode = AUDIO_MODE_OTHER;
     interval = 20;
     colorHSV1 = CHSV(0, 0, 255);
 }
@@ -502,6 +503,7 @@ void soundAmplitudeUpdate() {
 
 void solidColorInit(uint8_t sat) {
     activePattern = PATTERN_SOLID_COLOR;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, sat, 255);
 }
 
@@ -512,6 +514,7 @@ void solidColorUpdate() {
 
 void rainbowInit() {
     activePattern = PATTERN_RAINBOW;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, 255, 255);
 }
 
@@ -525,6 +528,7 @@ void rainbowUpdate() {
 
 void rainbowCycleInit() {
     activePattern = PATTERN_RAINBOW_CYCLE;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
@@ -542,6 +546,7 @@ void rainbowCycleUpdate() {
 
 void colorWaveInit(uint8_t sat) {
     activePattern = PATTERN_COLOR_WAVE;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, sat, 255);
     totalSteps = 256;
     curStep = 0;
@@ -563,6 +568,7 @@ void colorWaveUpdate() {
 
 void colorWaveRainbowInit() {
     activePattern = PATTERN_COLOR_WAVE_RAINBOW;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
@@ -587,6 +593,7 @@ void colorWaveRainbowUpdate() {
 
 void colorPulseInit() {
     activePattern = PATTERN_COLOR_PULSE;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
@@ -607,6 +614,7 @@ void colorPulseUpdate() {
 
 void randomPulseInit() {
     activePattern = PATTERN_RANDOM_PULSE;
+    patternAudioMode = AUDIO_MODE_OFF;
     colorHSV1 = CHSV(0, 0, 255);
     totalSteps = 256;
     curStep = 0;
@@ -666,6 +674,7 @@ void randomPulseUpdate() {
 
 void gradient1Init() {
     activePattern = PATTERN_GRADIENT_1;
+    patternAudioMode = AUDIO_MODE_OFF;
 }
 
 void gradient1Update() {
@@ -678,6 +687,7 @@ void gradient1Update() {
 
 void gradient2Init() {
     activePattern = PATTERN_GRADIENT_2;
+    patternAudioMode = AUDIO_MODE_OFF;
 }
 
 void gradient2Update() {
