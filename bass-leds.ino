@@ -11,6 +11,7 @@
 #define BRIGHT_POT_PIN A5
 
 #define MAX_BRIGHTNESS 64
+#define MAX_BRIGHTNESS_AUDIO 255
 #define BASELINE_BRIGHTNESS 128
 
 #define PATTERN_SOLID_COLOR 0
@@ -44,8 +45,7 @@
 #define NUM_SAMPLES 256
 #define BEAT_DETECTION_CONSTANT 13
 
-#define PICKUP_NOISE_THRESHOLD 12
-#define PICKUP_BASELINE_RESET_MILLIS 300000
+#define PICKUP_NOISE_THRESHOLD 15
 #define PICKUP_LOCAL_MAX_MILLIS 10
 
 #define PICKUP_NUM_SAMPLES 20
@@ -58,6 +58,7 @@ CRGB leds[NUM_LEDS];
 uint8_t activePattern;
 uint32_t interval;
 uint32_t lastUpdate;
+bool isAudioPattern = false;
 
 uint16_t totalSteps;
 uint16_t curStep;
@@ -71,7 +72,6 @@ uint8_t curMode;
 
 
 uint16_t pickupBaseline = 1023;
-uint32_t lastPickupBaselineReset;
 // uint16_t pickupLocalMax;
 uint16_t pickupValue;
 
@@ -100,7 +100,9 @@ uint16_t newSamples[NUM_SAMPLES];
 // uint16_t sampleIndex = 0;
 
 void setup() {
-    /*
+
+
+    
     FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
 
     // this reduces flicker at low brightness levels -- test whether needed on battery power
@@ -109,17 +111,25 @@ void setup() {
     // random seed
     random16_add_entropy(analogRead(A1));
 
+
+
+
     // white for testing
     // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
 
-    soundAmplitudeInit();*/
+    // soundAmplitudeInit();
 
-    Serial.begin(115200);
+    // Serial.begin(115200);
+
+    isAudioPattern = true;
 }
 
 void loop() {
+
+
+
     
-    // updateLedBrightness();
+    updateLedBrightness();
 
     // updateMode();
 
@@ -128,18 +138,17 @@ void loop() {
     // updatePickupReading();
     
 
+
+
+
     
 
     uint16_t reading = readPickup();
 
-    Serial.println(reading);
 
-    if ((millis() - lastPickupBaselineReset) > PICKUP_BASELINE_RESET_MILLIS) {
-        lastPickupBaselineReset = millis();
-        pickupBaseline = reading;
-    }
+
+
     if (reading < pickupBaseline) {
-        lastPickupBaselineReset = millis();
         pickupBaseline = reading;
     }
 
@@ -152,6 +161,21 @@ void loop() {
     } else {
         reading = 0;
     }
+
+    if (reading > 255) reading = 255;
+
+
+    // uint8_t gammaCorrect = pgm_read_byte(&gamma[reading]);
+    uint8_t scaledBright = map(reading, 0, 255, 0, MAX_BRIGHTNESS);
+    // FastLED.setBrightness(scaledBright);
+
+    fill_solid(&(leds[0]), NUM_LEDS, CRGB(scaledBright, scaledBright, scaledBright));
+
+
+
+    // Serial.println(reading);
+
+
 
     // now from 0 - ~60
 
@@ -196,13 +220,25 @@ void loop() {
 
     // uint16_t avg = sum / PICKUP_NUM_SAMPLES;
 
+
+/*
+
+
     uint16_t outVal = ((lastReading * 15) + reading) >> 4;
     lastReading = reading;
+
+
+*/
+
 
     // uint8_t gammaCorrect = pgm_read_byte(&gamma[map(outVal, 0, 60, 0, 255)]);
     // uint8_t scaledBright = map(gammaCorrect, 0, 255, 0, MAX_BRIGHTNESS);
     // FastLED.setBrightness(scaledBright);
     
+
+/*
+
+
     uint8_t scaledOutVal = map(reading, 0, 60, 0, 255);
 
 
@@ -214,6 +250,10 @@ void loop() {
     if (scaledOutVal > pickupFadeValue) {
         pickupFadeValue = scaledOutVal;
     }
+
+
+*/
+
 
     // if (scaledOutVal > pickupLocalMax) {
     //     pickupLocalMax = scaledOutVal;
@@ -239,7 +279,7 @@ void loop() {
     // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
     // FastLED.setBrightness(scaledBrightness);
 
-    // FastLED.show();
+    FastLED.show();
 }
 
 // reverses direction of pots
@@ -325,10 +365,14 @@ void updateMode() {
 }
 
 void updateLedBrightness() {
-    uint8_t reading = readPotScaled(BRIGHT_POT_PIN, 255);
-    uint8_t gammaCorrected = pgm_read_byte(&gamma[reading]);
-    uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
-    FastLED.setBrightness(scaledBrightness);
+    if (isAudioPattern) {
+        FastLED.setBrightness(MAX_BRIGHTNESS_AUDIO);
+    } else {
+        uint8_t reading = readPotScaled(BRIGHT_POT_PIN, 255);
+        uint8_t gammaCorrected = pgm_read_byte(&gamma[reading]);
+        uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
+        FastLED.setBrightness(scaledBrightness);
+    }
 }
 
 void updatePattern() {
