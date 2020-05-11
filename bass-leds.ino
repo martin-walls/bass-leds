@@ -3,6 +3,13 @@
 #define LED_PIN 6
 #define NUM_LEDS 87
 
+#define LED_CENTRE_BOTTOM 41
+#define LED_CENTRE_LEFT 62
+#define LED_TOP_LEFT 78
+#define LED_CENTRE_RIGHT 19
+#define LED_TOP_RIGHT 6
+#define LED_STRIP_END 86
+
 // signal from op amp
 #define PICKUP_PIN A0
 // control knobs
@@ -11,12 +18,11 @@
 #define BRIGHT_POT_PIN A5
 
 #define MAX_BRIGHTNESS 64
-#define MAX_BRIGHTNESS_AUDIO 64
-#define BASELINE_BRIGHTNESS 128
+#define MAX_BRIGHTNESS_AUDIO 96
 
-#define AUDIO_MODE_OFF 0
-#define AUDIO_MODE_PULSE 1
-#define AUDIO_MODE_OTHER 2
+#define BRIGHTNESS_MODE_POT 0
+#define BRIGHTNESS_MODE_AUDIO_PULSE 1
+#define BRIGHTNESS_MODE_MAX 2
 
 #define PATTERN_SOLID_COLOR 0
 #define PATTERN_RAINBOW 1
@@ -24,17 +30,16 @@
 #define PATTERN_COLOR_WAVE 3
 #define PATTERN_COLOR_WAVE_RAINBOW 4
 #define PATTERN_COLOR_PULSE 5
-#define PATTERN_SOUND_AMPLITUDE 6
-#define PATTERN_SOUND_PULSE 7
+#define PATTERN_GRADIENT_1 6
+#define PATTERN_GRADIENT_2 7
 #define PATTERN_RANDOM_PULSE 8
-#define PATTERN_GRADIENT_1 9
-#define PATTERN_GRADIENT_2 10
+
+#define PATTERN_SOUND_PULSE_SOLID 9
+#define PATTERN_SOUND_AMPLITUDE 10
 
 #define RAINBOW_MIN_SAT 128
 
-#define WAVE_INTERVAL 20
-
-#define NUM_RAND_PULSE_LEDS 8
+#define NUM_RAND_PULSE_LEDS 10
 
 #define NUM_GRADIENT_COLORS 4
 #define GRADIENT_GREEN_PURPLE 0
@@ -62,14 +67,16 @@ CRGB leds[NUM_LEDS];
 uint8_t activePattern;
 uint32_t interval;
 uint32_t lastUpdate;
-// bool isAudioPattern = false;
-uint8_t patternAudioMode = AUDIO_MODE_OFF;
+uint8_t patternBrightnessMode = BRIGHTNESS_MODE_POT;
 
 uint16_t totalSteps;
 uint16_t curStep;
 
 CHSV colorHSV1;
 uint8_t randLeds[NUM_RAND_PULSE_LEDS];
+
+uint8_t lastHue;
+
 uint8_t gradHue1;
 uint8_t gradHue2;
 
@@ -77,32 +84,7 @@ uint8_t curMode;
 
 
 uint16_t pickupBaseline = 1023;
-// uint16_t pickupLocalMax;
-uint16_t pickupValue;
 
-uint32_t lastPickupLocalMax;
-
-
-uint16_t samples[PICKUP_NUM_SAMPLES];
-uint8_t sampleIndex = 0;
-
-uint16_t lastReading;
-
-
-uint8_t pickupUpdateValue;
-uint32_t pickupUpdateValueLastUpdate;
-
-uint8_t pickupLocalMax;
-
-uint8_t pickupFadeValue;
-uint8_t pickupFadeValueLastUpdate;
-
-
-
-uint16_t energyHistory[ENERGY_HISTORY_SIZE];
-// uint16_t sampleHistoryHead = 0;
-uint16_t newSamples[NUM_SAMPLES];
-// uint16_t sampleIndex = 0;
 
 void setup() {
 
@@ -110,7 +92,7 @@ void setup() {
     
     FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
 
-    // this reduces flicker at low brightness levels -- test whether needed on battery power
+    // this reduces flicker at low brightness levels
     FastLED.setDither(0);
 
     // random seed
@@ -129,156 +111,18 @@ void setup() {
 
 void loop() {
 
-
-
-    
     updateLedBrightness();
 
     updateMode();
 
     updatePattern();
-    
-
-
-
 
     
 
-    // uint16_t reading = readPickup();
+    // fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
 
-
-
-
-    // if (reading < pickupBaseline) {
-    //     pickupBaseline = reading;
-    // }
-
-    // // move down to 0
-    // reading -= pickupBaseline;
-
-    // // remove noise
-    // if (reading > PICKUP_NOISE_THRESHOLD) {
-    //     reading -= PICKUP_NOISE_THRESHOLD;
-    // } else {
-    //     reading = 0;
-    // }
-
-    // if (reading > 255) reading = 255;
-
-    // fill_solid(&(leds[0]), NUM_LEDS, CRGB(reading, reading, reading));
-
-    // uint8_t gammaCorrect = pgm_read_byte(&gamma[reading]);
-    // uint8_t scaledBright = map(reading, 0, 255, 0, MAX_BRIGHTNESS_AUDIO);
-    // FastLED.setBrightness(scaledBright);
-
-
-
-
-    // Serial.println(reading);
-
-
-
-    // now from 0 - ~60
-
-    // samples[sampleIndex] = reading;
-    // sampleIndex++;
-    // if (sampleIndex >= PICKUP_NUM_SAMPLES) sampleIndex = 0;
-
-    // pickupValue = ((pickupValue * 7) + reading) >> 3;
-
-    // if (pickupValue > pickupLocalMax || millis() - lastPickupLocalMax > 5) {
-    //     pickupLocalMax = ((pickupLocalMax * 3) + pickupValue) >> 2;
-    //     lastPickupLocalMax = millis();
-    // }
-
-    // if (reading - pickupBaseline > PICKUP_NOISE_THRESHOLD) {
-    //     uint16_t correctedReading = map(reading - pickupBaseline - PICKUP_NOISE_THRESHOLD, 0, 60, 0, 255);
-    //     if (correctedReading > pickupValue) {
-    //         pickupValue = correctedReading;
-    //     } else {
-    //         if ((millis() - lastPickupLocalMax) > PICKUP_LOCAL_MAX_MILLIS) {
-    //             lastPickupLocalMax = millis();
-    //             pickupValue = scale8(pickupValue, 240);
-    //         }
-    //     }
-    // } else {
-    //     if ((millis() - lastPickupLocalMax) > PICKUP_LOCAL_MAX_MILLIS) {
-    //         lastPickupLocalMax = millis();
-    //         pickupValue = scale8(pickupValue, 254);
-    //     }
-    // }
-
-    // corReading = map(corReading, 0, 60, 0, 255);
-
-    // uint16_t maxSample = 0;
-    // uint16_t sum;
-    // for (uint8_t i = 0; i < PICKUP_NUM_SAMPLES; i++) {
-    //     // if (samples[i] > maxSample) {
-    //     //     maxSample = samples[i];
-    //     // }
-    //     sum += samples[i];
-    // } 
-
-    // uint16_t avg = sum / PICKUP_NUM_SAMPLES;
-
-
-/*
-
-
-    uint16_t outVal = ((lastReading * 15) + reading) >> 4;
-    lastReading = reading;
-
-
-*/
-
-
-    // uint8_t gammaCorrect = pgm_read_byte(&gamma[map(outVal, 0, 60, 0, 255)]);
-    // uint8_t scaledBright = map(gammaCorrect, 0, 255, 0, MAX_BRIGHTNESS);
-    // FastLED.setBrightness(scaledBright);
-    
-
-/*
-
-
-    uint8_t scaledOutVal = map(reading, 0, 60, 0, 255);
-
-
-
-    if (millis() - pickupFadeValueLastUpdate > 10) {
-        pickupFadeValue -= 10;
-    }
-
-    if (scaledOutVal > pickupFadeValue) {
-        pickupFadeValue = scaledOutVal;
-    }
-
-
-*/
-
-
-    // if (scaledOutVal > pickupLocalMax) {
-    //     pickupLocalMax = scaledOutVal;
-    // }
-    // if (millis() - pickupUpdateValueLastUpdate > 50) {
-    //     pickupUpdateValueLastUpdate = millis();
-    //     pickupUpdateValue = pickupLocalMax;
-    //     pickupFadeValue = pickupUpdateValue;
-    //     pickupLocalMax = 0;
-    // }
-
-    // if (sampleIndex == 0) {
-    //     if (detectBeat()) {
-            // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
-    //     } else {
-    //         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
-    //     }
-    // }
-
-    // uint16_t reading = analogRead(PICKUP_PIN);
-    // uint8_t val = map(reading, 0, 1023, 0, 255);
-    // uint8_t gammaCorrected = pgm_read_byte(&gamma[pickupValue]);
-    // uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
-    // FastLED.setBrightness(scaledBrightness);
+    // leds[62] = CRGB(255, 255, 255);
+    // leds[19] = CRGB(255, 255, 255);
 
     FastLED.show();
 }
@@ -326,55 +170,56 @@ void updateMode() {
         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
         switch (curMode) {
             case 0:
-                solidColorInit(255);
-                break;
-            case 1:
-                solidColorInit(192);
-                break;
-            case 2:
-                solidColorInit(128);
-                break;
-            case 3:
-                rainbowInit();
-                break;
-            case 4:
-                rainbowCycleInit();
-                break;
-            case 5:
-                colorWaveInit(255);
-                break;
-            case 6:
-                colorWaveRainbowInit();
-                break;
-            case 7:
-                colorPulseInit();
-                break;
-            case 8:
-                soundAmplitudeInit();
-                break;
-            case 9:
-                soundPulseInit();
-                break;
-            case 10:
                 randomPulseInit();
                 break;
+            case 1:
+                colorWaveInit();
+                break;
+            case 2:
+                solidColorInit(255);
+                break;
+            case 3:
+                solidColorInit(178);
+                break;
+            case 4:
+                soundPulseSolidInit();
+                break;
+            case 5:
+                rainbowCycleInit(false);
+                break;
+            case 6:
+                rainbowInit(true);
+                break;
+            case 7:
+                rainbowCycleInit(true);
+                break;
+            case 8:
+                gradient1Init(false);
+                break;
+            case 9:
+                gradient2Init(false);
+                break;
+            case 10:
+                gradient1Init(true);
+                break;
             case 11:
-                // gradient2Init();
-                soundPulseInit();
+                gradient2Init(true);
                 break;
         }
     }
 }
 
 void updateLedBrightness() {
-    if (patternAudioMode == AUDIO_MODE_PULSE) {
+    if (patternBrightnessMode == BRIGHTNESS_MODE_AUDIO_PULSE) {
         uint8_t reading = getPickupReading();
         FastLED.setBrightness(map(reading, 0, 255, 0, MAX_BRIGHTNESS_AUDIO));
-    } else {
+    } else if (patternBrightnessMode == BRIGHTNESS_MODE_POT) {
         uint8_t reading = readPotScaled(BRIGHT_POT_PIN, 255);
         uint8_t gammaCorrected = pgm_read_byte(&gamma[reading]);
         uint8_t scaledBrightness = map(gammaCorrected, 0, 255, 0, MAX_BRIGHTNESS);
         FastLED.setBrightness(scaledBrightness);
+    } else {
+        FastLED.setBrightness(MAX_BRIGHTNESS);
     }
 }
 
@@ -382,6 +227,12 @@ void updatePattern() {
     if ((millis() - lastUpdate) > interval) {
         lastUpdate = millis();
         switch (activePattern) {
+            case PATTERN_SOUND_AMPLITUDE:
+                soundAmplitudeMeterUpdate();
+                break;
+            case PATTERN_SOUND_PULSE_SOLID:
+                soundPulseSolidUpdate();
+                break;
             case PATTERN_SOLID_COLOR:
                 solidColorUpdate();
                 break;
@@ -398,13 +249,7 @@ void updatePattern() {
                 colorWaveRainbowUpdate();
                 break;
             case PATTERN_COLOR_PULSE:
-                colorPulseUpdate();
-                break;
-            case PATTERN_SOUND_AMPLITUDE:
-                soundAmplitudeUpdate();
-                break;
-            case PATTERN_SOUND_PULSE:
-                soundPulseUpdate();
+                twoColorFadeUpdate();
                 break;
             case PATTERN_RANDOM_PULSE:
                 randomPulseUpdate();
@@ -450,14 +295,14 @@ uint8_t getPickupReading() {
     return (uint8_t) reading;
 }
 
-void soundPulseInit() {
-    activePattern = PATTERN_SOUND_PULSE;
-    patternAudioMode = AUDIO_MODE_PULSE;
-    
+void soundPulseSolidInit() {
+    activePattern = PATTERN_SOUND_PULSE_SOLID;
+    patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    interval = 20;
     colorHSV1 = CHSV(0, 255, 255);
 }
 
-void soundPulseUpdate() {
+void soundPulseSolidUpdate() {
     colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
     // use brightness pot to set saturation, brightness is set from pickup reading
     colorHSV1.sat = readPotScaled(BRIGHT_POT_PIN, 255);
@@ -465,35 +310,36 @@ void soundPulseUpdate() {
     fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
 }
 
-void soundAmplitudeInit() {
+
+// probably don't use this pattern, works but doesn't look too good imo
+void soundAmplitudeMeterInit() {
     activePattern = PATTERN_SOUND_AMPLITUDE;
-    patternAudioMode = AUDIO_MODE_OTHER;
+    patternBrightnessMode = BRIGHTNESS_MODE_POT;
     interval = 20;
     colorHSV1 = CHSV(0, 0, 255);
 }
 
-void soundAmplitudeUpdate() {
-    // replace this with pickup reading
-    // uint8_t numLeds = readPotScaled(ADJ_POT_PIN, 45);
-    uint8_t numLeds = map(pickupFadeValue, 0, 255, 0, 39);
+void soundAmplitudeMeterUpdate() {
+
+    uint8_t numLeds = map(getPickupReading(), 0, 255, 0, 50);
     fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
     for (uint8_t i = 0; i < numLeds; i++) {
-        if (i >= 40) break;
-        leds[39 + i] = colorHSV1;
-        leds[39 - i] = colorHSV1;
+        if (i >= 41) break;
+        leds[40 + i] = colorHSV1;
+        leds[40 - i] = colorHSV1;
         // fading edges
         if (i == numLeds - 3) {
-            leds[39 + i] %= pgm_read_byte(&gamma[192]);
-            leds[39 - i] %= pgm_read_byte(&gamma[192]);
+            leds[40 + i] %= pgm_read_byte(&gamma[192]);
+            leds[40 - i] %= pgm_read_byte(&gamma[192]);
         } else if (i == numLeds - 2) {
-            leds[39 + i] %= pgm_read_byte(&gamma[128]);
-            leds[39 - i] %= pgm_read_byte(&gamma[128]);
+            leds[40 + i] %= pgm_read_byte(&gamma[128]);
+            leds[40 - i] %= pgm_read_byte(&gamma[128]);
         } else if (i == numLeds - 1) {
-            leds[39 + i] %= pgm_read_byte(&gamma[64]);
-            leds[39 - i] %= pgm_read_byte(&gamma[64]);
+            leds[40 + i] %= pgm_read_byte(&gamma[64]);
+            leds[40 - i] %= pgm_read_byte(&gamma[64]);
         } else if (i == numLeds) {
-            leds[39 + i] %= pgm_read_byte(&gamma[32]);
-            leds[39 - i] %= pgm_read_byte(&gamma[32]);
+            leds[40 + i] %= pgm_read_byte(&gamma[32]);
+            leds[40 - i] %= pgm_read_byte(&gamma[32]);
         }
     }
 }
@@ -503,7 +349,7 @@ void soundAmplitudeUpdate() {
 
 void solidColorInit(uint8_t sat) {
     activePattern = PATTERN_SOLID_COLOR;
-    patternAudioMode = AUDIO_MODE_OFF;
+    patternBrightnessMode = BRIGHTNESS_MODE_POT;
     colorHSV1 = CHSV(0, sat, 255);
 }
 
@@ -512,9 +358,13 @@ void solidColorUpdate() {
     fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
 }
 
-void rainbowInit() {
+void rainbowInit(bool soundPulse) {
     activePattern = PATTERN_RAINBOW;
-    patternAudioMode = AUDIO_MODE_OFF;
+    if (soundPulse) {
+        patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    } else {
+        patternBrightnessMode = BRIGHTNESS_MODE_POT;
+    }
     colorHSV1 = CHSV(0, 255, 255);
 }
 
@@ -526,17 +376,22 @@ void rainbowUpdate() {
     }
 }
 
-void rainbowCycleInit() {
+void rainbowCycleInit(bool soundPulse) {
     activePattern = PATTERN_RAINBOW_CYCLE;
-    patternAudioMode = AUDIO_MODE_OFF;
+    if (soundPulse) {
+        patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    } else {
+        patternBrightnessMode = BRIGHTNESS_MODE_POT;
+    }
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
-    interval = 20;
+    interval = 60;
 }
 
 void rainbowCycleUpdate() {
     colorHSV1.sat = readPotScaled(ADJ_POT_PIN, RAINBOW_MIN_SAT, 255);
+    if (interval == 50) interval = 10000;
     for (uint8_t led = 0; led < NUM_LEDS; led++) {
         colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255) + curStep;
         leds[led] = colorHSV1;
@@ -544,21 +399,22 @@ void rainbowCycleUpdate() {
     incrementStep();
 }
 
-void colorWaveInit(uint8_t sat) {
+void colorWaveInit() {
     activePattern = PATTERN_COLOR_WAVE;
-    patternAudioMode = AUDIO_MODE_OFF;
-    colorHSV1 = CHSV(0, sat, 255);
+    patternBrightnessMode = BRIGHTNESS_MODE_MAX;
+    colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
-    interval = WAVE_INTERVAL;
+    interval = 30;
 }
 
 void colorWaveUpdate() {
+    colorHSV1.sat = readPotScaled(BRIGHT_POT_PIN, 255);
     colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
     for (uint8_t led = 0; led < NUM_LEDS; led++) {
         uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
         // colorHSV1.val = cubicwave8(curStep + offset);
-        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, BASELINE_BRIGHTNESS, 255);
+        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, 128, 255);
         colorHSV1.val = pgm_read_byte(&gamma[val]);
         leds[led] = colorHSV1;
     }
@@ -568,11 +424,11 @@ void colorWaveUpdate() {
 
 void colorWaveRainbowInit() {
     activePattern = PATTERN_COLOR_WAVE_RAINBOW;
-    patternAudioMode = AUDIO_MODE_OFF;
+    patternBrightnessMode = BRIGHTNESS_MODE_POT;
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
-    interval = WAVE_INTERVAL;
+    interval = 30;
 }
 
 void colorWaveRainbowUpdate() {
@@ -581,7 +437,7 @@ void colorWaveRainbowUpdate() {
         uint16_t offset = map(led, 0, NUM_LEDS, 0, 2047);
         // colorHSV1.val = cubicwave8(curStep + offset);
         // uint8_t val = cubicwave8(curStep + offset);
-        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, BASELINE_BRIGHTNESS, 255);
+        uint8_t val = map(cubicwave8(curStep + offset), 0, 255, 128, 255);
         colorHSV1.val = pgm_read_byte(&gamma[val]);
 
         colorHSV1.hue = map(led, 0, NUM_LEDS, 0, 255) + curStep;
@@ -591,16 +447,20 @@ void colorWaveRainbowUpdate() {
     incrementStep();
 }
 
-void colorPulseInit() {
+void twoColorFadeInit(bool soundPulse) {
     activePattern = PATTERN_COLOR_PULSE;
-    patternAudioMode = AUDIO_MODE_OFF;
+    if (soundPulse) {
+        patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    } else {
+        patternBrightnessMode = BRIGHTNESS_MODE_POT;
+    }
     colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
     interval = 20;
 }
 
-void colorPulseUpdate() {
+void twoColorFadeUpdate() {
     uint8_t hue = readPotScaled(ADJ_POT_PIN, 255);
     for (uint8_t led = 0; led < NUM_LEDS; led++) {
         uint16_t waveOffset = map(led, 0, NUM_LEDS, 0, 511);
@@ -614,17 +474,27 @@ void colorPulseUpdate() {
 
 void randomPulseInit() {
     activePattern = PATTERN_RANDOM_PULSE;
-    patternAudioMode = AUDIO_MODE_OFF;
-    colorHSV1 = CHSV(0, 0, 255);
+    patternBrightnessMode = BRIGHTNESS_MODE_MAX;
+    colorHSV1 = CHSV(0, 255, 255);
     totalSteps = 256;
     curStep = 0;
-    interval = 20;
+    interval = 10;
     for (uint8_t i = 0; i < NUM_RAND_PULSE_LEDS; i++) {
         randLeds[i] = random8(NUM_LEDS);
     }
 }
 
 void randomPulseUpdate() {
+    colorHSV1.sat = readPotScaled(BRIGHT_POT_PIN, 255);
+
+    colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
+
+    if (colorHSV1.hue != lastHue) {
+        lastHue = colorHSV1.hue;
+        colorHSV1.val = 64;
+        fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
+    }
+
     for (uint8_t led = 0; led < NUM_RAND_PULSE_LEDS; led++) {
         uint8_t waveOffset = map(led, 0, NUM_RAND_PULSE_LEDS, 0, 255);
 
@@ -638,7 +508,7 @@ void randomPulseUpdate() {
                 for (uint8_t i = 0; i < NUM_RAND_PULSE_LEDS; i++) {
                     if (i == led) continue;
                     uint8_t ledGap = randLeds[i] > newRandLed ? randLeds[i] - newRandLed : newRandLed - randLeds[i];
-                    if (ledGap < 5) {
+                    if (ledGap < 7) {
                         newRandLed = random8(NUM_LEDS);
                         validLedPos = false;
                         break;
@@ -653,50 +523,73 @@ void randomPulseUpdate() {
 
         if (randLeds[led] > 0) {
             leds[randLeds[led] - 1] = colorHSV1;
-            leds[randLeds[led] - 1] %= pgm_read_byte(&gamma[128]);
         }
         if (randLeds[led] < NUM_LEDS - 1) {
             leds[randLeds[led] + 1] = colorHSV1;
-            leds[randLeds[led] + 1] %= pgm_read_byte(&gamma[128]);
         }
         if (randLeds[led] > 1) {
             leds[randLeds[led] - 2] = colorHSV1;
-            leds[randLeds[led] - 2] %= pgm_read_byte(&gamma[64]);
+            leds[randLeds[led] - 2] %= pgm_read_byte(&gamma[128]);
         }
         if (randLeds[led] < NUM_LEDS - 2) {
             leds[randLeds[led] + 2] = colorHSV1;
-            leds[randLeds[led] + 2] %= pgm_read_byte(&gamma[64]);
+            leds[randLeds[led] + 2] %= pgm_read_byte(&gamma[128]);
         }
+        if (randLeds[led] > 2) {
+            leds[randLeds[led] - 3] = colorHSV1;
+            leds[randLeds[led] - 3] %= pgm_read_byte(&gamma[64]);
+        }
+        if (randLeds[led] < NUM_LEDS - 3) {
+            leds[randLeds[led] + 3] = colorHSV1;
+            leds[randLeds[led] + 3] %= pgm_read_byte(&gamma[64]);
+        }
+    }
+
+    colorHSV1.val = 64;
+
+    for (uint8_t led = 0; led < NUM_LEDS; led++) {
+        leds[led] |= colorHSV1;
     }
 
     incrementStep();
 }
 
-void gradient1Init() {
+void gradient1Init(bool soundPulse) {
     activePattern = PATTERN_GRADIENT_1;
-    patternAudioMode = AUDIO_MODE_OFF;
+    if (soundPulse) {
+        patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    } else {
+        patternBrightnessMode = BRIGHTNESS_MODE_POT;
+    }
 }
 
 void gradient1Update() {
     setGradientColors();
 
-    fill_gradient(&(leds[0]), 0, CHSV(gradHue1, 255, 255), NUM_LEDS / 2, CHSV(gradHue2, 255, 255));
-    fill_gradient(&(leds[0]), NUM_LEDS / 2, CHSV(gradHue2, 255, 255), NUM_LEDS - 1, CHSV(gradHue1, 255, 255));
+    fill_gradient(&(leds[0]), LED_TOP_RIGHT, CHSV(gradHue1, 255, 255), LED_CENTRE_BOTTOM, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), LED_CENTRE_BOTTOM, CHSV(gradHue2, 255, 255), LED_TOP_LEFT, CHSV(gradHue1, 255, 255));
 
+    mirrorAtEnds();
 }
 
-void gradient2Init() {
+void gradient2Init(bool soundPulse) {
     activePattern = PATTERN_GRADIENT_2;
-    patternAudioMode = AUDIO_MODE_OFF;
+    if (soundPulse) {
+        patternBrightnessMode = BRIGHTNESS_MODE_AUDIO_PULSE;
+    } else {
+        patternBrightnessMode = BRIGHTNESS_MODE_POT;
+    }
 }
 
 void gradient2Update() {
     setGradientColors();
 
-    fill_gradient(&(leds[0]), 0, CHSV(gradHue1, 255, 255), NUM_LEDS / 4, CHSV(gradHue2, 255, 255));
-    fill_gradient(&(leds[0]), NUM_LEDS / 4, CHSV(gradHue2, 255, 255), NUM_LEDS / 2, CHSV(gradHue1, 255, 255));
-    fill_gradient(&(leds[0]), NUM_LEDS / 2, CHSV(gradHue1, 255, 255), NUM_LEDS * 3 / 4, CHSV(gradHue2, 255, 255));
-    fill_gradient(&(leds[0]), NUM_LEDS * 3 / 4, CHSV(gradHue2, 255, 255), NUM_LEDS - 1, CHSV(gradHue1, 255, 255));
+    fill_gradient(&(leds[0]), LED_TOP_RIGHT, CHSV(gradHue1, 255, 255), LED_CENTRE_RIGHT, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), LED_CENTRE_RIGHT, CHSV(gradHue2, 255, 255), LED_CENTRE_BOTTOM, CHSV(gradHue1, 255, 255));
+    fill_gradient(&(leds[0]), LED_CENTRE_BOTTOM, CHSV(gradHue1, 255, 255), LED_CENTRE_LEFT, CHSV(gradHue2, 255, 255));
+    fill_gradient(&(leds[0]), LED_CENTRE_LEFT, CHSV(gradHue2, 255, 255), LED_TOP_LEFT, CHSV(gradHue1, 255, 255));
+
+    mirrorAtEnds();
 }
 
 void setGradientColors() {
@@ -740,6 +633,15 @@ void rotateLeds(uint8_t direction) {
     }
 }
 
+void mirrorAtEnds() {
+    for (uint8_t i = 0; i < LED_STRIP_END - LED_TOP_LEFT; i++) {
+        leds[LED_TOP_LEFT + i + 1] = leds[LED_TOP_LEFT - i - 1];
+    }
+
+    for (uint8_t i = 0; i < LED_TOP_RIGHT; i++) {
+        leds[LED_TOP_RIGHT - i - 1] = leds[LED_TOP_RIGHT + i + 1];
+    }
+}
 
 
 
