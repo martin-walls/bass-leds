@@ -80,10 +80,10 @@ uint8_t lastHue;
 uint8_t gradHue1;
 uint8_t gradHue2;
 
-uint8_t curMode;
+uint8_t curMode = 255;
 
 
-uint16_t pickupBaseline = 1023;
+uint16_t pickupBaseline;
 
 
 void setup() {
@@ -98,31 +98,17 @@ void setup() {
     // random seed
     random16_add_entropy(analogRead(A1));
 
+    FastLED.show();
 
-
-
-    // white for testing
-    // fill_solid(&(leds[0]), NUM_LEDS, CRGB(255, 255, 255));
-
-    // soundAmplitudeInit();
-
-    // Serial.begin(115200);
+    calibratePickup();
 }
 
 void loop() {
-
     updateLedBrightness();
 
     updateMode();
 
     updatePattern();
-
-    
-
-    // fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
-
-    // leds[62] = CRGB(255, 255, 255);
-    // leds[19] = CRGB(255, 255, 255);
 
     FastLED.show();
 }
@@ -273,16 +259,27 @@ void incrementStep() {
     }
 }
 
-// sound reactive modes
+void calibratePickup() {
+    pickupBaseline = 1023;
+    for (uint8_t i = 0; i < 100; i++) {
+        uint16_t reading = analogRead(PICKUP_PIN);
+
+        if (reading < pickupBaseline) {
+            pickupBaseline = reading;
+        }
+
+        delay(10);
+    }
+}
 
 uint8_t getPickupReading() {
     uint16_t reading = analogRead(PICKUP_PIN);
 
-    if (reading < pickupBaseline) {
-        pickupBaseline = reading;
+    if (reading > pickupBaseline) {
+        reading -= pickupBaseline;
+    } else {
+        reading = 0;
     }
-
-    reading -= pickupBaseline;
 
     if (reading > PICKUP_NOISE_THRESHOLD) {
         reading -= PICKUP_NOISE_THRESHOLD;
@@ -305,7 +302,7 @@ void soundPulseSolidInit() {
 void soundPulseSolidUpdate() {
     colorHSV1.hue = readPotScaled(ADJ_POT_PIN, 255);
     // use brightness pot to set saturation, brightness is set from pickup reading
-    colorHSV1.sat = readPotScaled(BRIGHT_POT_PIN, 255);
+    colorHSV1.sat = readPotScaled(BRIGHT_POT_PIN, 100, 255);
 
     fill_solid(&(leds[0]), NUM_LEDS, colorHSV1);
 }
@@ -343,9 +340,6 @@ void soundAmplitudeMeterUpdate() {
         }
     }
 }
-
-
-// other modes
 
 void solidColorInit(uint8_t sat) {
     activePattern = PATTERN_SOLID_COLOR;
