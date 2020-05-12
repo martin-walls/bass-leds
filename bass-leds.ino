@@ -83,7 +83,7 @@ uint8_t gradHue2;
 uint8_t curMode = 255;
 
 
-uint16_t pickupBaseline;
+uint16_t pickupBaseline = 1023;
 
 
 void setup() {
@@ -100,7 +100,7 @@ void setup() {
 
     FastLED.show();
 
-    calibratePickup();
+    // calibratePickup();
 }
 
 void loop() {
@@ -152,6 +152,7 @@ uint8_t getModeFromReading(uint16_t reading) {
 void updateMode() {
     uint8_t mode = readMode();
     if (mode != curMode) {
+        pickupBaseline = 1023;
         curMode = mode;
         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
         switch (curMode) {
@@ -274,6 +275,10 @@ void calibratePickup() {
 
 uint8_t getPickupReading() {
     uint16_t reading = analogRead(PICKUP_PIN);
+
+    if (reading < pickupBaseline) {
+        pickupBaseline = reading;
+    }
 
     if (reading > pickupBaseline) {
         reading -= pickupBaseline;
