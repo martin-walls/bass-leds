@@ -152,8 +152,10 @@ uint8_t getModeFromReading(uint16_t reading) {
 void updateMode() {
     uint8_t mode = readMode();
     if (mode != curMode) {
+        // reset pickup baseline on mode change
         pickupBaseline = 1023;
         curMode = mode;
+        // reset leds to off so they're not left on from the effect before
         fill_solid(&(leds[0]), NUM_LEDS, CRGB(0, 0, 0));
         switch (curMode) {
             case 0:
